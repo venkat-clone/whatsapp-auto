@@ -39,6 +39,16 @@ async function startBot() {
     });
 
     sock.ev.on("creds.update", saveCreds);
+    sock.ev.on("groups.update",async (t)=>{
+        console.log(t);
+    });
+
+    sock.ev.on("chats.update", async (t) => {
+        console.log(t);
+    console.log("🧾 Group Chats:");
+    
+});
+
 
     sock.ev.on("messages.upsert", async (msg) => {
         const message = msg.messages[0];
@@ -71,12 +81,14 @@ app.post("/send-message", async (req, res) => {
     }
 });
 
-
 app.get("/test", async (req, res) => {
-    const { jid, message } = {jid:"+918184926683",message:"test message"};
+    const number = "8184926683"; // Without country code: ❌
+    const fullNumber = "918184926683"; // With country code: ✅
+
+    const jid = `${fullNumber}@s.whatsapp.net`; // Format as WhatsApp JID
+    const message = "test message";
 
     if (!sock) return res.status(503).send({ error: "WhatsApp not connected." });
-    if (!jid || !message) return res.status(400).send({ error: "Missing jid or message." });
 
     try {
         await sock.sendMessage(jid, { text: message });
@@ -86,6 +98,7 @@ app.get("/test", async (req, res) => {
         res.status(500).send({ error: "Failed to send message." });
     }
 });
+
 
 // ======= ✅ START EXPRESS SERVER =======
 const PORT = process.env.PORT || 3000;
