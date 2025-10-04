@@ -2,8 +2,11 @@ const express = require("express");
 const qrcode = require("qrcode-terminal");
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require("@whiskeysockets/baileys");
 const { Boom } = require("@hapi/boom");
-
+const axios = require("axios");
 const app = express();
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 app.use(express.json());
 
 let sock; // WhatsApp socket will be stored here
@@ -50,34 +53,68 @@ async function startBot() {
 });
 
 
-    sock.ev.on("messages.upsert", async (msg) => {
-        const message = msg.messages[0];
-        if (!message.message || message.key.fromMe) return;
+    // sock.ev.on("messages.upsert", async (msg) => {
+    //     const message = msg.messages[0];
+    //     if (!message.message || message.key.fromMe) return;
 
-        const text = message.message.conversation || message.message.extendedTextMessage?.text;
-        if (text?.toLowerCase().includes("hello")) {
-            await sock.sendMessage(message.key.remoteJid, {
-                text: "Hi! WhatsApp API Bot here 👋"
-            });
-        }
-    });
+    //     const text = message.message.conversation || message.message.extendedTextMessage?.text;
+    //     if (text?.toLowerCase().includes("hello")) {
+    //         await sock.sendMessage(message.key.remoteJid, {
+    //             text: "Hi! WhatsApp API Bot here 👋"
+    //         });
+    //     }
+    // });
 }
 
 startBot();
 
 // ======= ✅ EXPRESS API ROUTE =======
 app.post("/send-message", async (req, res) => {
-    const { jid, message } = req.body;
+    const { jid, message, s3Url,fileName } = req.body;
 
     if (!sock) return res.status(503).send({ error: "WhatsApp not connected." });
-    if (!jid || !message) return res.status(400).send({ error: "Missing jid or message." });
+    if (!jid) return res.status(400).send({ error: "Missing jid." });
 
+    console.log(`Sending message to ${jid} message: ${message} s3Url: ${s3Url}`);
     try {
-        await sock.sendMessage(jid, { text: message });
-        res.send({ success: true, message: "Message sent." });
+        if (s3Url) {
+            // Download the file from s3Url
+            const response = await axios.get(s3Url, {
+                responseType: 'arraybuffer',
+            });
+
+            const fileBuffer = Buffer.from(response.data, 'binary');
+            const contentType = response.headers['content-type'] || mime.lookup(s3Url);
+            const url = new URL(s3Url);            // Step 1: Parse the URL properly
+            const pathname = url.pathname;         // Step 2: Get just the path (e.g. /bucket/date/file.pdf)
+            const docName = pathname.split('/').pop(); // Step 3: Extract file name from path
+
+
+            const tempFilePath = path.join(os.tmpdir(), 'test-file');
+
+            // Save buffer to temp file
+            fs.writeFileSync(tempFilePath, fileBuffer);
+            console.log(`📝 File saved to temp path: ${tempFilePath}`);
+            let mediaMessage = {
+                document: fileBuffer,
+                mimetype: contentType,
+                fileName: fileName||docName,
+                caption: message || '', // Optional caption
+            };
+
+            await sock.sendMessage(jid, mediaMessage);
+            return res.send({ success: true, message: "File sent via WhatsApp." });
+
+        } else if (message) {
+            // Send text message
+            await sock.sendMessage(jid, { text: message });
+            return res.send({ success: true, message: "Message sent." });
+        } else {
+            return res.status(400).send({ error: "Provide either message or s3Url." });
+        }
     } catch (err) {
         console.error("❌ Error sending message:", err);
-        res.status(500).send({ error: "Failed to send message." });
+        return res.status(500).send({ error: "Failed to send message." });
     }
 });
 
