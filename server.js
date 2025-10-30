@@ -7,6 +7,9 @@ const app = express();
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const dotenv = require('dotenv');
+
+dotenv.config();
 app.use(express.json());
 
 let sock; // WhatsApp socket will be stored here
